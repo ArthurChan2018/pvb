@@ -128,6 +128,9 @@ typedef struct
 TDS;
 #endif
 
+// switch on/off program traceing
+static int debug = 0; 
+
 // communication_plugin
 static plugin_pvAccept            plug_pvAccept = NULL;
 static plugin_pvtcpsend_binary    plug_pvtcpsend_binary = NULL;
@@ -200,28 +203,32 @@ static void mytext(PARAM *p, const char *text)
 
 int pvlock(PARAM *p)
 {
-  if(p == NULL) return -1;
+  //if(p == NULL) return -1;
 #ifndef USE_INETD
-  if(p->my_pvlock_count == 0)
-  {
-    p->my_pvlock_count++;
-    pvthread_mutex_lock(&param_mutex);
-  }  
+  //if(p->my_pvlock_count == 0)
+  //{
+  //  p->my_pvlock_count++;
+  //  pvthread_mutex_lock(&param_mutex);
+  //}  
+  pvthread_mutex_lock(&param_mutex);
 #endif
+  if(p == NULL) return 0;
   return 0;
 }
 
 int pvunlock(PARAM *p)
 {
-  if(p == NULL) return -1;
+  //if(p == NULL) return -1;
 #ifndef USE_INETD
-  p->my_pvlock_count--;
-  if(p->my_pvlock_count < 0) p->my_pvlock_count = 0;
-  if(p->my_pvlock_count == 0)
-  {
-    pvthread_mutex_unlock(&param_mutex);
-  }  
+  //p->my_pvlock_count--;
+  //if(p->my_pvlock_count < 0) p->my_pvlock_count = 0;
+  //if(p->my_pvlock_count == 0)
+  //{
+  //  pvthread_mutex_unlock(&param_mutex);
+  //}  
+  pvthread_mutex_unlock(&param_mutex);
 #endif
+  if(p == NULL) return 0;
   return 0;
 }
 
@@ -514,7 +521,8 @@ int pvThreadFatal(PARAM *p, const char *text)
 
   pvlock(p);
   fprintf(stderr,"Thread finished: %s s=%d\n",text,p->s);
-  if(num_threads > 0) num_threads--;
+  // if(num_threads > 0) num_threads--;
+  num_threads--; // rl-jul-2019
   if(p->clipboard != NULL) free(p->clipboard);
   if(p->x != NULL) free(p->x);
   if(p->y != NULL) free(p->y);
@@ -832,8 +840,16 @@ bind:
         if(pvCmdLine   != NULL) len += strlen(pvCmdLine);
         char *buf = (char *) malloc(len);
         start_gui++;
-        if(url_trailer == NULL) sprintf(buf,"pvbrowser \"pv://localhost:%d\"",   p->port);
-        else                    sprintf(buf,"pvbrowser \"pv://localhost:%d%s\"", p->port, url_trailer);
+        if(pvCmdLine != NULL && strstr(pvCmdLine,"-rlbrowser") != NULL)
+        {
+          if(url_trailer == NULL) sprintf(buf,"rlbrowser \"rl://localhost:%d\"",   p->port);
+          else                    sprintf(buf,"rlbrowser \"rl://localhost:%d%s\"", p->port, url_trailer);
+        }
+        else
+        {
+          if(url_trailer == NULL) sprintf(buf,"pvbrowser \"pv://localhost:%d\"",   p->port);
+          else                    sprintf(buf,"pvbrowser \"pv://localhost:%d%s\"", p->port, url_trailer);
+        }  
         if(pvCmdLine != NULL)
         {
           char *cptr = strstr(pvCmdLine," -gui");
@@ -1054,7 +1070,16 @@ int pvtcpsend_binary(PARAM *p, const char *buf, int len)
     fputs(buf,p->fp);
     return 0;
   }
-  
+
+  if(debug)
+  {
+    char line[84];
+    snprintf(line,80,"%s",buf);
+    printf("pvtcpsend: ");
+    if(buf[len-1] == '\n') printf("%s",buf);
+    else                   printf("%s\n",buf);
+  }
+
   if(p->use_communication_plugin)
   {
     return plug_pvtcpsend_binary(p, buf, len);
@@ -1128,6 +1153,13 @@ int pvtcpreceive(PARAM *p, char *buf, int maxlen)
   }
   i++;
   buf[i] = '\0';
+  
+  if(debug)
+  {
+    printf("pvtcpreceive: ");
+    printf("%s", buf);
+  }
+
   return i;
 }
 
@@ -1159,7 +1191,7 @@ int pvtcpreceive_binary(PARAM *p, char *buf, int maxlen)
 static int show_usage()
 {
   printf("###################################################################################\n");
-  printf("pvserver %s (C) by Lehrig Software Engineering 2000-2019       lehrig@t-online.de\n\n", pvserver_version);
+  printf("pvserver %s (C) by Lehrig Software Engineering 2000-2020       lehrig@t-online.de\n\n", pvserver_version);
   printf("usage: pvserver -port=5050 -sleep=500 -cd=/working/directory -exit_on_bind_error -exit_after_last_client_terminates -noforcenullevent -cache -ipv6 -communication_plugin=libname -use_communication_plugin -no_announce -http -gui <url_trailer>\n");
   printf("default:\n");
   printf("-port=5050\n");
@@ -1168,6 +1200,8 @@ static int show_usage()
   printf("-cd=/working/directory\n");
   printf("-http run in http server mode\n");
   printf("-gui # will start pvbrowser pv://localhost:port\n");
+  printf("-rlbrowser # alternative gui\n");
+  printf("-debug # will trace communication between client and server\n");
   printf("<url_trailer> example1: /?test1=1&test2=2\n");
   printf("<url_trailer> example2: /mask1?test1=1&test2=2\n");
   printf("###################################################################################\n");
@@ -1348,6 +1382,7 @@ int i,ret,cmdline_length;
       rl_ipversion = 6;
     }
     else if(strcmp(av[i],"-gui")                               == 0) start_gui = 1;
+    else if(strcmp(av[i],"-debug")                             == 0) debug = 1;
     else if(strncmp(av[i],"-communication_plugin=",22)         == 0)
     {
       const char *arg = av[i];
@@ -1408,6 +1443,11 @@ int pvClearMessageQueue(PARAM *p)
     timeout.tv_sec  = 0;
     timeout.tv_usec = 0;
 
+    if(debug)
+    {
+      printf("pvClearMessageQueue: select\n");
+    }
+    
     /* call select */
     ret = select(maxfdp1,&rset,&wset,&eset,&timeout);
     if(ret == 0) return 0; /* timeout */
@@ -1432,6 +1472,11 @@ int pvGetInitialMask(PARAM *p)
   timeout.tv_sec  = 1;
   timeout.tv_usec = 0;
 
+  if(debug)
+  {
+    printf("pvGetInitialMask1: select\n");
+  }
+    
   /* call select */
   ret = select(maxfdp1,&rset,&wset,&eset,&timeout);
   if(ret == 0) return 0; /* timeout */
@@ -1479,6 +1524,11 @@ int pvGetInitialMask(PARAM *p)
   timeout.tv_sec  = 1;
   timeout.tv_usec = 0;
 
+  if(debug)
+  {
+    printf("pvGetInitialMask2: select\n");
+  }
+    
   /* call select */
   ret = select(maxfdp1,&rset,&wset,&eset,&timeout);
   if(ret == 0) return 0; /* timeout */
@@ -1590,6 +1640,11 @@ start_poll:  // only necessary for pause
   timeout.tv_sec  =  p->sleep / 1000;
   timeout.tv_usec = (p->sleep % 1000) * 1000;
 
+  if(debug)
+  {
+    printf("pvPollEvent: select\n");
+  }
+    
   /* call select */
   //printf("SELECT\n");
   ret = select(maxfdp1,&rset,&wset,&eset,&timeout);
@@ -1976,7 +2031,7 @@ int pvCreateThread(PARAM *p, int s)
 #ifndef USE_INETD
   printf("pvCreateThread s=%d\n",ptr->s);
   int retval = pvthread_create(&tid, NULL, send_thread, (void *) ptr);
-  if(retval != 0 || tid == 0)
+  if(retval != 0 || tid == 0) // rl-jul-2019
   {
     if     (retval == EAGAIN) fprintf(stderr,"ERROR retval=EAGAIN\n ");
     else if(retval == EINVAL) fprintf(stderr,"ERROR retval=EINVAL\n ");
@@ -2885,7 +2940,7 @@ int pvSaveDrawBuffer(PARAM *p, int id, const char *filename)
 int pvStatusMessage(PARAM *p, int r, int g, int b, const char *format, ...)
 {
 char text[MAX_PRINTF_LENGTH+40],*cptr;
-char buf[MAX_PRINTF_LENGTH+40];
+char bigbuf[MAX_PRINTF_LENGTH+80];
 
   va_list ap;
   va_start(ap,format);
@@ -2907,8 +2962,8 @@ char buf[MAX_PRINTF_LENGTH+40];
     else break;
   }
   text[MAX_PRINTF_LENGTH - 1] = '\0';
-  sprintf(buf,"statusMessage(%d,%d,%d,\"%s\")\n",r,g,b,text);
-  pvtcpsend(p, buf, strlen(buf));
+  sprintf(bigbuf,"statusMessage(%d,%d,%d,\"%s\")\n",r,g,b,text);
+  pvtcpsend(p, bigbuf, strlen(bigbuf));
   return 0;
 }
 
@@ -2985,7 +3040,7 @@ int pvSetStyleSheet(PARAM *p, int id, const char *text)
 
 int pvSetWhatsThis(PARAM *p, int id, const char *_text)
 {
-char buf[MAX_PRINTF_LENGTH+40],text[MAX_PRINTF_LENGTH+40],*cptr;
+char buf[MAX_PRINTF_LENGTH+50],text[MAX_PRINTF_LENGTH+40],*cptr;
 int len;
 
   pv_length_check(p,_text);

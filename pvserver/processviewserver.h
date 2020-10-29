@@ -21,7 +21,7 @@
 #ifndef PROCESSVIEWSERVER_H
 #define PROCESSVIEWSERVER_H
 
-const char pvserver_version[] = "5.1.5";
+const char pvserver_version[] = "5.1.7";
 
 // define WIN
 #ifdef _WIN32
@@ -2230,6 +2230,10 @@ Set a table cell to ComboBox.
 
 example:
 pvSetTableComboBox(p,Table1,2,1,1,"choice1,choice2,choice3");
+
+You can add a # in front of choice in order to make it the selectedChoice.
+example: make choice2 the selectedChoice
+pvSetTableComboBox(p,Table1,2,1,1,"choice1,#choice2,choice3");
 
 Allowed widgets: QTable
 </pre> */

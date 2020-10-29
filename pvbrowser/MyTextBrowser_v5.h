@@ -83,20 +83,4 @@ private:
     //todo: will come in 5.6 QWebEngineUrlRequestInterceptor *urlRequestInterceptor;
 };
 
-#ifdef MY_NO_WEBKIT
-#else
-class MyWebEnginePage : public QWebEnginePage
-{
-    Q_OBJECT
-public:
-    MyWebEnginePage(int *sock, int ident, MyTextBrowser *myView, QObject *parent=0);
-    ~MyWebEnginePage();
-protected:    
-    virtual bool acceptNavigationRequest(const QUrl &url, NavigationType type, bool isMainFrame);
-private:
-    int *s,id;
-    MyTextBrowser *my_view;
-};
-#endif
-
 #endif
